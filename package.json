@@ -1,0 +1,23 @@
+{
+  "name": "eelu-it-bot",
+  "version": "2.0.0",
+  "description": "EELU IT Material Bot - Created by Mohamed Hashem Gamae",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "NODE_ENV=development node bot.js"
+  },
+  "keywords": ["telegram", "bot", "education", "eelu"],
+  "author": "Mohamed Hashem Gamae",
+  "license": "ISC",
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "mongoose": "^8.9.4",
+    "cloudinary": "^2.5.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
