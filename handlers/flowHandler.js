@@ -104,12 +104,25 @@ const registerFlowHandlers = (bot) => {
       flowState: 'selecting-category' 
     });
     
+    // Count materials by category
+    const lectures = await materialService.getMaterialsBySubject(user.level, user.semester, subject, 'lecture');
+    const sections = await materialService.getMaterialsBySubject(user.level, user.semester, subject, 'section');
+    const others = await materialService.getMaterialsBySubject(user.level, user.semester, subject, 'other');
+    
+    const lectureCount = lectures.length;
+    const sectionCount = sections.length;
+    const otherCount = others.length;
+    
     await ctx.editMessageText(withSignature(
-      `${capitalize(user.level)} Year - ${capitalize(user.semester)} Semester\n📚 ${subject}\n\nSelect category:`
+      `${capitalize(user.level)} Year - ${capitalize(user.semester)} Semester\n📚 ${subject}\n\n📊 Available Materials:\n` +
+      `📚 Lectures: ${lectureCount}\n` +
+      `📝 Sections: ${sectionCount}\n` +
+      `📎 Others: ${otherCount}\n\n` +
+      `Select category:`
     ), Markup.inlineKeyboard([
-      [Markup.button.callback('📚 Lectures', `category_lecture`)],
-      [Markup.button.callback('📝 Sections', `category_section`)],
-      [Markup.button.callback('📎 Others', `category_other`)],
+      [Markup.button.callback(`📚 Lectures (${lectureCount})`, `category_lecture`)],
+      [Markup.button.callback(`📝 Sections (${sectionCount})`, `category_section`)],
+      [Markup.button.callback(`📎 Others (${otherCount})`, `category_other`)],
       [Markup.button.callback('⬅️ Back', 'back_to_subjects')]
     ]));
   });

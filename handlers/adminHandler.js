@@ -156,7 +156,7 @@ const registerAdminHandlers = (bot) => {
     ), Markup.inlineKeyboard(buttons));
   });
   
-  bot.action(/^upload_subject_(.+)$/, (ctx) => {
+  bot.action(/^upload_subject_(.+)$/, async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     const subjectKey = ctx.match[1];
     const userId = ctx.from.id;
@@ -169,15 +169,29 @@ const registerAdminHandlers = (bot) => {
       s.replace(/\s+/g, '-').replace(/[()]/g, '').toLowerCase() === subjectKey
     ) || subjectKey;
     
+    // Count existing materials by category
+    const lectures = await materialService.getMaterialsBySubject(session.level, session.semester, subject, 'lecture');
+    const sections = await materialService.getMaterialsBySubject(session.level, session.semester, subject, 'section');
+    const others = await materialService.getMaterialsBySubject(session.level, session.semester, subject, 'other');
+    
+    const lectureCount = lectures.length;
+    const sectionCount = sections.length;
+    const otherCount = others.length;
+    
     session.subject = subject;
     session.step = 'category';
     
     ctx.editMessageText(withSignature(
-      `📤 Upload Material\n\nLevel: ${capitalize(session.level)}\nSemester: ${session.semester}\nSubject: ${subject}\n\nSelect category:`
+      `📤 Upload Material\n\nLevel: ${capitalize(session.level)}\nSemester: ${session.semester}\nSubject: ${subject}\n\n` +
+      `📊 Current Materials:\n` +
+      `📚 Lectures: ${lectureCount}\n` +
+      `📝 Sections: ${sectionCount}\n` +
+      `📎 Others: ${otherCount}\n\n` +
+      `Select category to upload:`
     ), Markup.inlineKeyboard([
-      [Markup.button.callback('📚 Lecture', 'upload_category_lecture')],
-      [Markup.button.callback('📝 Section', 'upload_category_section')],
-      [Markup.button.callback('📎 Other', 'upload_category_other')]
+      [Markup.button.callback(`📚 Lecture (${lectureCount})`, 'upload_category_lecture')],
+      [Markup.button.callback(`📝 Section (${sectionCount})`, 'upload_category_section')],
+      [Markup.button.callback(`📎 Other (${otherCount})`, 'upload_category_other')]
     ]));
   });
   
