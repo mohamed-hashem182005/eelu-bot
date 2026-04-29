@@ -2,7 +2,7 @@ const { Markup } = require('telegraf');
 const userService = require('../services/userService');
 
 // Bot signature
-const SIGNATURE = '\n\n— Created by Mohamed Hashem Gamae';
+const SIGNATURE = '\n\n— اللهم صلي علي النبي';
 
 const isAdmin = (userId) => {
   if (!userId || typeof userId !== 'number') return false;
@@ -35,11 +35,10 @@ const getWelcomeMessage = (firstName) => {
 📚 This bot provides study materials for IT students at EELU.
 
 🎯 What you can do:
-• Access lectures and sections
-• Download PDFs, PowerPoints, and more
+• Access lectures or sections and other(like:Revision or Quizes)
 • Browse by level, semester, and subject
 
-👨‍💻 Created by: Mohamed Hashem Gamae
+👨‍💻 Created by: Mohamed Hashem (Alsolamy)
 
 🚀 Let's get started!`;
 };
