@@ -204,18 +204,27 @@ const registerAdminHandlers = (bot) => {
     
     session.orderNumber = nextOrder;
     
+    // Initialize file queue
+    if (!session.fileQueue) session.fileQueue = [];
+    session.baseOrderNumber = nextOrder;
+    adminSessions.set(userId, session);
+    
     ctx.editMessageText(withSignature(
       `📤 Upload ${categoryLabel}\n\n` +
       `Level: ${capitalize(session.level)}\n` +
       `Semester: ${session.semester}\n` +
       `Subject: ${session.subject}\n` +
-      `${categoryLabel} Number: ${nextOrder}\n\n` +
-      `⬆️ Please send the file now.\n\n` +
-      `Accepted: PDF, PowerPoint, Word, Images, ZIP, TXT`
-    ));
+      `Starting ${categoryLabel} Number: ${nextOrder}\n\n` +
+      `⬆️ Send multiple files now!\n\n` +
+      `Accepted: PDF, PowerPoint, Word, Images, ZIP, TXT\n\n` +
+      `📁 Queued files: 0`
+    ), Markup.inlineKeyboard([
+      [Markup.button.callback('⬆️ Upload All', 'upload_all_files')],
+      [Markup.button.callback('❌ Cancel', 'cancel_upload_batch')]
+    ]));
   });
   
-  // Handle document upload (PDF, PPT, ZIP, etc.)
+  // Handle document upload - Queue files (PDF, PPT, ZIP, etc.)
   bot.on('document', async (ctx) => {
     const userId = ctx.from.id;
     const session = adminSessions.get(userId);
@@ -225,10 +234,11 @@ const registerAdminHandlers = (bot) => {
     
     const doc = ctx.message.document;
     
-    // Accept any file type (no strict validation)
     try {
-      await ctx.reply(withSignature('⏳ Uploading to cloud storage...'));
+      // Initialize queue if needed
+      if (!session.fileQueue) session.fileQueue = [];
       
+      // Get file link and buffer
       const fileLink = await ctx.telegram.getFileLink(doc.file_id);
       const response = await fetch(fileLink);
       const buffer = Buffer.from(await response.arrayBuffer());
@@ -236,57 +246,40 @@ const registerAdminHandlers = (bot) => {
       const fileType = materialService.getFileTypeFromMime(doc.mime_type, doc.file_name);
       const fileExtension = materialService.getFileExtension(doc.file_name);
       
-      const timestamp = Date.now();
-      const categoryLabel = session.category === 'lecture' ? 'lec' : 
-                           session.category === 'section' ? 'sec' : 'oth';
-      const filename = `${categoryLabel}_${session.orderNumber}_${timestamp}`;
+      // Add to queue
+      session.fileQueue.push({
+        buffer: buffer,
+        fileName: doc.file_name,
+        fileType: fileType,
+        fileExtension: fileExtension,
+        fileSize: doc.file_size || 0,
+        mimeType: doc.mime_type
+      });
       
-      const result = await materialService.uploadMaterial(
-        buffer,
-        filename,
-        {
-          title: doc.file_name.replace(/\.[^/.]+$/, '') || filename,
-          level: session.level,
-          semester: session.semester,
-          subject: session.subject,
-          category: session.category,
-          orderNumber: session.orderNumber,
-          fileType: fileType,
-          fileExtension: fileExtension,
-          originalName: doc.file_name,
-          fileSize: doc.file_size || 0
-        },
-        userId,
-        session.level,
-        session.semester,
-        session.subject,
-        session.category
-      );
+      adminSessions.set(userId, session);
       
-      adminSessions.delete(userId);
-      
-      const catLabel = capitalize(session.category);
+      // Update message with queued files
+      const fileList = session.fileQueue
+        .map((f, i) => `${i + 1}. 📄 ${f.fileName}`)
+        .join('\n');
       
       ctx.reply(withSignature(
-        `✅ ${catLabel} Uploaded Successfully!\n\n` +
-        `📄 ${result.material.title}\n` +
-        `🎓 Level: ${capitalize(session.level)}\n` +
-        `📅 Semester: ${session.semester}\n` +
-        `📚 Subject: ${session.subject}\n` +
-        `📂 Category: ${catLabel}\n` +
-        `🔢 Number: ${session.orderNumber}\n` +
-        `📎 Type: ${capitalize(fileType)}\n\n` +
-        `✅ Upload complete!`
-      ));
+        `✅ File queued!\n\n` +
+        `📁 Queued files: ${session.fileQueue.length}\n\n` +
+        `${fileList}\n\n` +
+        `📤 Send more files or click "Upload All"`
+      ), Markup.inlineKeyboard([
+        [Markup.button.callback('⬆️ Upload All Now', 'upload_all_files')],
+        [Markup.button.callback('❌ Cancel', 'cancel_upload_batch')]
+      ]));
       
     } catch (error) {
-      console.error('Upload error:', error);
-      ctx.reply(withSignature('❌ Failed to upload. Please try again.'));
-      adminSessions.delete(userId);
+      console.error('File queue error:', error);
+      ctx.reply(withSignature('❌ Failed to queue file. Please try again.'));
     }
   });
   
-  // Handle photo upload (images)
+  // Handle photo upload - Queue images
   bot.on('photo', async (ctx) => {
     const userId = ctx.from.id;
     const session = adminSessions.get(userId);
@@ -295,7 +288,8 @@ const registerAdminHandlers = (bot) => {
     if (!isAdmin(userId)) return;
     
     try {
-      await ctx.reply(withSignature('⏳ Uploading image...'));
+      // Initialize queue if needed
+      if (!session.fileQueue) session.fileQueue = [];
       
       const photo = ctx.message.photo[ctx.message.photo.length - 1];
       const fileLink = await ctx.telegram.getFileLink(photo.file_id);
@@ -303,50 +297,147 @@ const registerAdminHandlers = (bot) => {
       const buffer = Buffer.from(await response.arrayBuffer());
       
       const timestamp = Date.now();
-      const categoryLabel = session.category === 'lecture' ? 'lec' : 
-                           session.category === 'section' ? 'sec' : 'oth';
-      const filename = `${categoryLabel}_${session.orderNumber}_${timestamp}`;
+      const fileName = `image_${timestamp}.jpg`;
       
-      const result = await materialService.uploadMaterial(
-        buffer,
-        filename,
-        {
-          title: `Image_${session.orderNumber}`,
-          level: session.level,
-          semester: session.semester,
-          subject: session.subject,
-          category: session.category,
-          orderNumber: session.orderNumber,
-          fileType: 'image',
-          fileExtension: 'jpg',
-          originalName: `image_${timestamp}.jpg`,
-          fileSize: photo.file_size || 0
-        },
-        userId,
-        session.level,
-        session.semester,
-        session.subject,
-        session.category
-      );
+      // Add to queue
+      session.fileQueue.push({
+        buffer: buffer,
+        fileName: fileName,
+        fileType: 'image',
+        fileExtension: 'jpg',
+        fileSize: photo.file_size || 0,
+        mimeType: 'image/jpeg'
+      });
       
-      adminSessions.delete(userId);
+      adminSessions.set(userId, session);
+      
+      // Update message with queued files
+      const fileList = session.fileQueue
+        .map((f, i) => `${i + 1}. 📄 ${f.fileName}`)
+        .join('\n');
       
       ctx.reply(withSignature(
-        `✅ Image Uploaded Successfully!\n\n` +
-        `🖼️ ${result.material.title}\n` +
-        `🎓 Level: ${capitalize(session.level)}\n` +
-        `📅 Semester: ${session.semester}\n` +
-        `📚 Subject: ${session.subject}\n` +
-        `📂 Category: ${capitalize(session.category)}\n` +
-        `🔢 Number: ${session.orderNumber}\n\n` +
-        `✅ Upload complete!`
-      ));
+        `✅ Image queued!\n\n` +
+        `📁 Queued files: ${session.fileQueue.length}\n\n` +
+        `${fileList}\n\n` +
+        `📤 Send more files or click "Upload All"`
+      ), Markup.inlineKeyboard([
+        [Markup.button.callback('⬆️ Upload All Now', 'upload_all_files')],
+        [Markup.button.callback('❌ Cancel', 'cancel_upload_batch')]
+      ]));
       
     } catch (error) {
-      console.error('Upload image error:', error);
-      ctx.reply(withSignature('❌ Failed to upload image. Please try again.'));
-      adminSessions.delete(userId);
+      console.error('Image queue error:', error);
+      ctx.reply(withSignature('❌ Failed to queue image. Please try again.'));
     }
+  });
+  
+  // Upload all queued files at once
+  bot.action('upload_all_files', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) {
+      return ctx.answerCbQuery('Not authorized', { show_alert: true });
+    }
+    const userId = ctx.from.id;
+    const session = adminSessions.get(userId);
+    
+    if (!session || !session.fileQueue || session.fileQueue.length === 0) {
+      return ctx.answerCbQuery('No files queued', { show_alert: true });
+    }
+    
+    ctx.answerCbQuery();
+    
+    try {
+      await ctx.reply(withSignature(`⏳ Uploading ${session.fileQueue.length} file(s)...`));
+      
+      const uploadedFiles = [];
+      let orderNumber = session.baseOrderNumber;
+      
+      // Upload all files
+      for (const file of session.fileQueue) {
+        try {
+          const timestamp = Date.now();
+          const categoryLabel = session.category === 'lecture' ? 'lec' : 
+                               session.category === 'section' ? 'sec' : 'oth';
+          const filename = `${categoryLabel}_${orderNumber}_${timestamp}`;
+          
+          const result = await materialService.uploadMaterial(
+            file.buffer,
+            filename,
+            {
+              title: file.fileName.replace(/\.[^/.]+$/, '') || filename,
+              level: session.level,
+              semester: session.semester,
+              subject: session.subject,
+              category: session.category,
+              orderNumber: orderNumber,
+              fileType: file.fileType,
+              fileExtension: file.fileExtension,
+              originalName: file.fileName,
+              fileSize: file.fileSize || 0
+            },
+            userId,
+            session.level,
+            session.semester,
+            session.subject,
+            session.category
+          );
+          
+          uploadedFiles.push({
+            title: result.material.title,
+            orderNumber: orderNumber,
+            type: file.fileType
+          });
+          
+          orderNumber++;
+          
+        } catch (fileError) {
+          console.error('Error uploading file:', fileError);
+          uploadedFiles.push({
+            title: file.fileName,
+            orderNumber: orderNumber,
+            type: 'FAILED',
+            error: true
+          });
+          orderNumber++;
+        }
+      }
+      
+      adminSessions.delete(userId);
+      
+      // Show summary
+      const catLabel = capitalize(session.category);
+      const successCount = uploadedFiles.filter(f => !f.error).length;
+      const failedCount = uploadedFiles.filter(f => f.error).length;
+      
+      let summary = `✅ Batch Upload Complete!\n\n`;
+      summary += `📁 ${catLabel} Files: ${successCount} succeeded`;
+      if (failedCount > 0) summary += `, ${failedCount} failed`;
+      summary += `\n\n`;
+      summary += uploadedFiles.map((f, i) => {
+        const icon = f.error ? '❌' : '✅';
+        return `${icon} ${f.title} (#${f.orderNumber})`;
+      }).join('\n');
+      summary += `\n\n✅ All files uploaded to database!`;
+      
+      ctx.reply(withSignature(summary));
+      
+    } catch (error) {
+      console.error('Batch upload error:', error);
+      adminSessions.delete(userId);
+      ctx.reply(withSignature('❌ Upload failed. Please try again.'));
+    }
+  });
+  
+  // Cancel batch upload
+  bot.action('cancel_upload_batch', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) {
+      return ctx.answerCbQuery('Not authorized', { show_alert: true });
+    }
+    const userId = ctx.from.id;
+    adminSessions.delete(userId);
+    
+    ctx.answerCbQuery();
+    await ctx.editMessageText(withSignature('❌ Batch upload cancelled. No files were uploaded.'));
   });
 };
 
