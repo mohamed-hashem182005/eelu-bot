@@ -2,6 +2,9 @@ const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
   userId: { type: Number, required: true, unique: true },
+  firstName: { type: String, default: null },
+  lastName: { type: String, default: null },
+  username: { type: String, default: null },
   level: { type: String, enum: ['first', 'second', 'third', 'fourth'], default: null },
   semester: { type: String, enum: ['first', 'second'], default: null },
   subject: { type: String, default: null },

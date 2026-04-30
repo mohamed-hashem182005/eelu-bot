@@ -10,7 +10,7 @@ const { Telegraf, session } = require('telegraf');
 
 const { connectDB, disconnectDB } = require('./config/db');
 const { testConnection: testCloudinary } = require('./config/cloudinary');
-const { handleStart, handleHelp, handleReset } = require('./handlers/startHandler');
+const { handleStart, handleHelp, handleReset, extractUserData } = require('./handlers/startHandler');
 const { registerFlowHandlers } = require('./handlers/flowHandler');
 const { registerAdminHandlers } = require('./handlers/adminHandler');
 const userService = require('./services/userService');
@@ -26,6 +26,9 @@ const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 bot.use(session({
   defaultSession: () => ({ uploadState: null })
 }));
+
+// ✅ Register user data extraction middleware (runs on all messages/interactions)
+bot.use(extractUserData);
 
 // Register all handlers
 const initBot = async () => {
