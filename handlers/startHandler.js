@@ -37,9 +37,6 @@ const getWelcomeMessage = (firstName) => {
 🎯 What you can do:
 • Access lectures or sections and others (like => Revision or Quizes)
 • Browse by level, semester, and subject
-
-👨‍💻 Created by:Eng:Mohamed Hashem (Alsolamy)
-
 🚀 Let's get started!`;
 };
 
