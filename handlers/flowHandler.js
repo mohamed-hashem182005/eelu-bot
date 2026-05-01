@@ -1,6 +1,7 @@
 const { Markup } = require('telegraf');
 const userService = require('../services/userService');
 const materialService = require('../services/materialService');
+const PaginationService = require('../services/paginationService');
 const { withSignature } = require('./startHandler');
 
 const curriculum = {
@@ -136,10 +137,38 @@ const registerFlowHandlers = (bot) => {
     const user = await userService.getOrCreateUser(userId);
     
     await userService.updateUserSelection(userId, { 
-      flowState: 'selecting-material' 
+      flowState: 'selecting-material',
+      currentPage: 0 
     });
     
-    await showMaterialList(ctx, userId, user.level, user.semester, user.subject, category);
+    await showMaterialList(ctx, userId, user.level, user.semester, user.subject, category, 0);
+  });
+  
+  // ✅ NEW: Pagination handler for material lists
+  bot.action(/^pagination_download_material_(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const page = parseInt(ctx.match[1], 10);
+    const userId = ctx.from.id;
+    const user = await userService.getOrCreateUser(userId);
+
+    if (!user.level || !user.semester || !user.subject || !user.lastCategory) {
+      return ctx.reply(withSignature('❌ Session expired. Please start again using /start'));
+    }
+
+    await showMaterialList(
+      ctx,
+      userId,
+      user.level,
+      user.semester,
+      user.subject,
+      user.lastCategory,
+      page
+    );
+  });
+
+  // No-op button (page counter - prevents console errors)
+  bot.action('pagination_noop', async (ctx) => {
+    await ctx.answerCbQuery();
   });
   
   // ✅ MATERIAL DOWNLOAD - Send file as buffer (NO URL)
@@ -262,7 +291,7 @@ const registerFlowHandlers = (bot) => {
   });
 };
 
-const showMaterialList = async (ctx, userId, level, semester, subject, category) => {
+const showMaterialList = async (ctx, userId, level, semester, subject, category, page = 0) => {
   try {
     const materials = await materialService.getMaterialsByCategory(level, semester, subject, category);
     
@@ -271,37 +300,59 @@ const showMaterialList = async (ctx, userId, level, semester, subject, category)
     
     if (materials.length === 0) {
       return await ctx.editMessageText(withSignature(
-        `❌ No ${categoryLabel} available for:\n` +
-        `${capitalize(level)} Year - ${capitalize(semester)} Semester\n` +
-        `Subject: ${subject}\n\nContact your admin to upload materials.`
+        `❌ No ${categoryLabel} available for:\n${capitalize(level)} Year - ${capitalize(semester)} Semester\nSubject: ${subject}`
       ), Markup.inlineKeyboard([
         [Markup.button.callback('⬅️ Back to Categories', 'back_to_categories')],
         [Markup.button.callback('🔄 Start Over', 'restart_flow')]
       ]));
     }
-    
-    const materialButtons = materials.map(mat => [
-      Markup.button.callback(
-        `${getFileEmoji(mat.fileType)} ${capitalize(category.slice(0, -1))} ${mat.orderNumber}: ${mat.title}`, 
-        `download_material_${mat._id}`
-      )
-    ]);
-    
-    materialButtons.push([
-      Markup.button.callback('⬅️ Back', 'back_to_categories'),
-      Markup.button.callback('🔄 Start Over', 'restart_flow')
-    ]);
-    
-    const header = `🎓 ${capitalize(level)} Year - ${capitalize(semester)} Semester\n` +
+
+    // ✅ PAGINATION: Split materials into pages (8 items per page)
+    const itemsPerPage = 8;
+    const pages = PaginationService.paginateArray(materials, itemsPerPage);
+    const currentPage = Math.max(0, Math.min(page, pages.length - 1));
+    const currentMaterials = pages[currentPage];
+
+    // Save current category and pagination state to user
+    await userService.updateUserSelection(userId, {
+      lastCategory: category,
+      lastLevel: level,
+      lastSemester: semester,
+      lastSubject: subject,
+      currentPage: currentPage
+    });
+
+    // Format materials for pagination service
+    const formattedMaterials = currentMaterials.map(mat => ({
+      id: mat._id,
+      label: `${capitalize(category.slice(0, -1))} ${mat.orderNumber}: ${mat.title.substring(0, 28)}${mat.title.length > 28 ? '...' : ''}`,
+      emoji: getFileEmoji(mat.fileType)
+    }));
+
+    // Create header with page info
+    const header = `🎓 ${capitalize(level)} Year • ${capitalize(semester)} Semester\n` +
                    `📚 ${subject}\n` +
-                   `📂 ${categoryLabel} (${materials.length}):\n\n` +
-                   `Click to download:`;
-    
-    await ctx.editMessageText(withSignature(header), Markup.inlineKeyboard(materialButtons));
-    
+                   `📂 ${categoryLabel} (${materials.length} total)\n\n` +
+                   `📄 Page ${currentPage + 1}/${pages.length}\n\n` +
+                   `Select to download:`;
+
+    // Create keyboard with pagination
+    const keyboard = PaginationService.createPaginationKeyboard(
+      formattedMaterials,
+      currentPage,
+      pages.length,
+      'download_material',
+      [
+        [Markup.button.callback('⬅️ Back', 'back_to_categories')],
+        [Markup.button.callback('🔄 Restart', 'restart_flow')]
+      ]
+    );
+
+    await ctx.editMessageText(withSignature(header), keyboard);
+
   } catch (error) {
-    console.error('Show material list error:', error);
-    await ctx.reply(withSignature('❌ Error loading materials. Please try again.'));
+    console.error('❌ Material list error:', error.message);
+    await ctx.reply(withSignature('❌ Error loading materials. Try again.'));
   }
 };
 
@@ -310,4 +361,4 @@ const capitalize = (str) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-module.exports = { registerFlowHandlers };
+module.exports = { registerFlowHandlers, capitalize };

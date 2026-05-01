@@ -9,6 +9,11 @@ const userSchema = new mongoose.Schema({
   semester: { type: String, enum: ['first', 'second'], default: null },
   subject: { type: String, default: null },
   lastMaterialId: { type: String, default: null },
+  lastCategory: { type: String, enum: ['lecture', 'section', 'other'], default: null },
+  lastLevel: { type: String, default: null },
+  lastSemester: { type: String, default: null },
+  lastSubject: { type: String, default: null },
+  currentPage: { type: Number, default: 0 },
   flowState: { 
     type: String, 
     enum: ['idle', 'selecting-level', 'selecting-semester', 'selecting-subject', 'selecting-category', 'selecting-material', 'completed'], 
