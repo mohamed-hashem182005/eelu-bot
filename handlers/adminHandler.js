@@ -504,20 +504,64 @@ const showDeleteMenu = async (ctx) => {
     return ctx.reply(withSignature('📭 No files to delete.'));
   }
   
-  for (const mat of materials) {
-    const catLabel = mat.category === 'lecture' ? 'Lecture' : 
-                    mat.category === 'section' ? 'Section' : 'Other';
+  // Split into chunks to avoid exceeding 4096 character limit
+  const MAX_MESSAGE_LENGTH = 3800;
+  const chunks = [];
+  let currentMessage = '🗑️ Delete Materials:\n\n';
+  let itemCount = 0;
+  
+  materials.forEach((mat, idx) => {
+    const catLabel = mat.category === 'lecture' ? 'Lec' : 
+                    mat.category === 'section' ? 'Sec' : 'Oth';
+    const itemText = `${idx + 1}. [${catLabel}${mat.orderNumber}] ${mat.title}\n` +
+                     `   Level: ${mat.level} | Sem: ${mat.semester}\n` +
+                     `   Subject: ${mat.subject}\n` +
+                     `   Type: ${capitalize(mat.fileType)}\n`;
+    
+    // Check if adding this item would exceed the limit or we have 8 items per chunk
+    if (((currentMessage + itemText + SIGNATURE).length > MAX_MESSAGE_LENGTH) || itemCount >= 8) {
+      // Save current message and start a new one
+      chunks.push({ message: currentMessage, startIdx: idx - itemCount, endIdx: idx - 1, itemCount });
+      currentMessage = `🗑️ Delete Materials (continued):\n\n${itemText}`;
+      itemCount = 1;
+    } else {
+      currentMessage += itemText;
+      itemCount++;
+    }
+  });
+  
+  // Add the last chunk
+  if (currentMessage.trim().length > 0) {
+    chunks.push({ message: currentMessage, itemCount });
+  }
+  
+  // Send all chunks with delete buttons
+  for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+    const chunk = chunks[chunkIdx];
+    const startIdx = chunk.startIdx || (chunkIdx === 0 ? 0 : materials.length);
+    const endIdx = chunk.endIdx || materials.length - 1;
+    
+    // Get materials for this chunk
+    const chunkMaterials = chunkIdx === 0 
+      ? materials.slice(0, chunk.itemCount)
+      : materials.slice(startIdx, endIdx + 1);
+    
+    // Create buttons for this chunk
+    const buttons = chunkMaterials.map(mat =>
+      [Markup.button.callback(
+        `🗑️ Delete: ${mat.title.substring(0, 35)}${mat.title.length > 35 ? '...' : ''}`,
+        `confirm_delete_${mat._id}`
+      )]
+    );
+    
+    // Add pagination info if multiple chunks
+    if (chunks.length > 1) {
+      buttons.push([Markup.button.callback(`Page ${chunkIdx + 1}/${chunks.length}`, 'pagination_noop')]);
+    }
     
     await ctx.reply(
-      withSignature(
-        `📄 [${catLabel} ${mat.orderNumber}] ${mat.title}\n` +
-        `🎓 ${capitalize(mat.level)} | ${capitalize(mat.semester)}\n` +
-        `📚 ${mat.subject}\n` +
-        `📎 ${capitalize(mat.fileType)}`
-      ),
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🗑️ Delete This Material', `confirm_delete_${mat._id}`)]
-      ])
+      withSignature(chunk.message),
+      Markup.inlineKeyboard(buttons)
     );
   }
   
