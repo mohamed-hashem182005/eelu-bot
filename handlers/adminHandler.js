@@ -2,6 +2,7 @@ const { Markup } = require('telegraf');
 const { isAdmin, adminMiddleware, withSignature } = require('./startHandler');
 const materialService = require('../services/materialService');
 
+const SIGNATURE = '\n\n— اللهم صلي علي النبي';
 const adminSessions = new Map();
 
 const curriculum = {
@@ -462,17 +463,38 @@ const showMaterialList = async (ctx) => {
     return ctx.reply(withSignature('📭 No files uploaded yet.'));
   }
   
-  let message = '📋 All Uploaded Materials:\n\n';
+  // Split into chunks to avoid exceeding 4096 character limit
+  const MAX_MESSAGE_LENGTH = 3800; // Leave buffer for signature
+  const chunks = [];
+  let currentMessage = '📋 All Uploaded Materials:\n\n';
+  
   materials.forEach((mat, idx) => {
     const catLabel = mat.category === 'lecture' ? 'Lec' : 
                     mat.category === 'section' ? 'Sec' : 'Oth';
-    message += `${idx + 1}. [${catLabel}${mat.orderNumber}] ${mat.title}\n`;
-    message += `   Level: ${mat.level} | Sem: ${mat.semester}\n`;
-    message += `   Subject: ${mat.subject}\n`;
-    message += `   Type: ${mat.fileType}\n\n`;
+    const itemText = `${idx + 1}. [${catLabel}${mat.orderNumber}] ${mat.title}\n` +
+                     `   Level: ${mat.level} | Sem: ${mat.semester}\n` +
+                     `   Subject: ${mat.subject}\n` +
+                     `   Type: ${mat.fileType}\n\n`;
+    
+    // Check if adding this item would exceed the limit
+    if ((currentMessage + itemText + SIGNATURE).length > MAX_MESSAGE_LENGTH) {
+      // Save current message and start a new one
+      chunks.push(currentMessage);
+      currentMessage = `📋 Materials (continued):\n\n${itemText}`;
+    } else {
+      currentMessage += itemText;
+    }
   });
   
-  ctx.reply(withSignature(message));
+  // Add the last chunk
+  if (currentMessage.trim().length > 0) {
+    chunks.push(currentMessage);
+  }
+  
+  // Send all chunks
+  for (const chunk of chunks) {
+    await ctx.reply(withSignature(chunk));
+  }
 };
 
 const showDeleteMenu = async (ctx) => {
